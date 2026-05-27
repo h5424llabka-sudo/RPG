@@ -2,7 +2,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const TILE_SIZE = 32;
 const VIEW_W = 20;
-const VIEW_H = 15;
+const VIEW_H = 13;
 const FONT_JP = '"MS Gothic","Hiragino Kaku Gothic Pro",monospace';
 const loadedImages = {};
 
@@ -228,16 +228,20 @@ function drawMPBar(mp, maxMp, x, y, w=60) {
 function renderMapHUD() {
   const gs = GameState;
   const map = gs.currentMap;
-  drawBox(0, 0, 640, 36);
-  drawText(map.name, 10, 10, '#aabbff', 14);
-  drawText(`💰 ${gs.gold}G`, 200, 10, '#ffdd44', 14);
+  
+  // 上部の情報バー（マップ名、所持金、HP）はそのまま残します
+  drawBox(0, 0, 640, 48);
+  drawText(map.name, 10, 8, '#aabbff', 14);
+  drawText(`💰 ${gs.gold}G`, 200, 8, '#ffdd44', 14);
   gs.party.forEach((m, i) => {
     const x = 320 + i * 80;
     drawText(m.name, x, 4, '#aabbff', 10);
-    drawHPBar('', m.hp, m.maxHp, x, 18, 70);
+    drawHPBar('', m.hp, m.maxHp, x, 22, 70);
   });
-  drawBox(0, 444, 640, 36);
-  drawText('Zキー: 話す/決定  Xキー: メニュー  矢印キー: 移動', 10, 454, '#7788bb', 11);
+  
+  // 以下の2行を削除（コメントアウト）することで、画面下部の操作説明バーが消えます
+  // drawBox(0, 432, 640, 48);
+  // drawText('Zキー: 話す/決定  Xキー: メニュー  矢印キー: 移動', 10, 442, '#7788bb', 11);
 }
 
 function renderMap() {
@@ -310,7 +314,35 @@ function renderBattle() {
     drawHPBar(e.name, e.hp, e.maxHp, ex-40, ey+50, 80);
     if (e.analyzed) { ctx.fillStyle='#ffaa22'; ctx.font=`10px ${FONT_JP}`; ctx.textAlign='center'; ctx.fillText(`弱点:${e.weakTo}`, ex, ey+70); }
     if (e.isBlind) { ctx.fillStyle='#888'; ctx.font=`10px ${FONT_JP}`; ctx.textAlign='center'; ctx.fillText('暗闇', ex, ey-50); }
+    if (bd.phase==='select' && bd.targetMode && i === bd.selectedEnemyIdx) {
+      ctx.strokeStyle='#ffff00'; ctx.lineWidth=3; ctx.strokeRect(ex-60, ey-80, 120, 160);
+      ctx.fillStyle='#ffff00'; ctx.font=`bold 14px ${FONT_JP}`; ctx.textAlign='center'; ctx.fillText('◀ ▶', ex, ey-90);
+    }
   });
+  bd.damageFloating.forEach((dmg,di)=>{
+    if (dmg.timer > 0) {
+      const alpha = Math.min(1, dmg.timer / 500);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = dmg.isPlayer ? '#ff6666' : '#ffff00';
+      ctx.font = `bold 24px ${FONT_JP}`;
+      ctx.textAlign = 'center';
+      const offsetY = (1000 - dmg.timer) * 0.05;
+      let x, y;
+      if (dmg.isPlayer) {
+        const mi = dmg.targetIdx - 10;
+        x = 70 + mi * 130;
+        y = 385 - offsetY;
+      } else {
+        const eIdx = dmg.targetIdx;
+        const enemies = bd.enemies.filter(e=>e.hp>0);
+        x = 640 * (eIdx + 1) / (enemies.length + 1);
+        y = 200 - offsetY;
+      }
+      ctx.fillText('-' + dmg.damage, x, y);
+      ctx.globalAlpha = 1;
+    }
+  });
+  bd.damageFloating = bd.damageFloating.filter(d=>d.timer > 0).map(d=>({...d, timer:d.timer-16}));
   drawBox(0,350,640,130);
   party.forEach((m,i)=>{
     const x=10 + i*130; const isActive = bd.phase==='select' && i===bd.selectedMember;
@@ -326,14 +358,18 @@ function renderBattle() {
   if (bd.phase==='select' || bd.phase==='result') {
     const activeMember=party[bd.selectedMember];
     if (bd.phase==='select' && activeMember && activeMember.hp>0) {
-      if (!bd.skillMode) {
+      if (!bd.skillMode && !bd.targetMode) {
         drawBox(440,270,190,80, activeMember.name + 'のコマンド');
         COMMANDS.forEach((cmd,i)=> {
           const cx=450+(i%2)*90; const cy=283+Math.floor(i/2)*22; const sel=i===bd.selectedCmd;
           ctx.fillStyle = sel ? '#4455ff' : 'transparent'; ctx.fillRect(cx-2,cy-2,85,18);
           drawText((sel?'▶':' ')+cmd, cx, cy, sel ? '#ffffff' : '#aabbff', 13);
         });
-      } else {
+      } else if (bd.targetMode) {
+        drawBox(440,270,190,50, activeMember.name + '：敵を選択');
+        drawText('◀ と ▶ で選択 Z で決定', 450, 285, '#aabbff', 12);
+        drawText('X でキャンセル', 450, 300, '#aabbff', 12);
+      } else if (bd.skillMode) {
         const skills=activeMember.skills||[];
         drawBox(440,250,190,30+skills.length*26,'スキル');
         skills.forEach((sk,i)=>{

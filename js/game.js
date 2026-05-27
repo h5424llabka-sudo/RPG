@@ -25,6 +25,31 @@ function canTriggerEncounter(map, tx, ty) {
   if (Array.isArray(map.encounterTiles)) return map.encounterTiles.includes(tile);
   return tile === 'grass';
 }
+
+function getRandomEnemyEncounter(baseEnemies) {
+  if (!baseEnemies || baseEnemies.length === 0) return [];
+  const pattern = Math.random();
+  let enemyTypes = [];
+  if (pattern < 0.5) {
+    const base = baseEnemies[Math.floor(Math.random() * baseEnemies.length)];
+    const level = Math.random() < 0.5 ? '' : (Math.random() < 0.5 ? '_lv2' : '_lv3');
+    enemyTypes = [base + level];
+  } else if (pattern < 0.7) {
+    const base = baseEnemies[Math.floor(Math.random() * baseEnemies.length)];
+    const level = Math.random() < 0.5 ? '' : '_lv2';
+    enemyTypes = [base + level, base + level];
+  } else if (pattern < 0.85) {
+    const b1 = baseEnemies[Math.floor(Math.random() * baseEnemies.length)];
+    const b2 = baseEnemies[Math.floor(Math.random() * baseEnemies.length)];
+    enemyTypes = [b1, b2];
+  } else {
+    const b1 = baseEnemies[Math.floor(Math.random() * baseEnemies.length)];
+    const b2 = baseEnemies[Math.floor(Math.random() * baseEnemies.length)];
+    const b3 = baseEnemies[Math.floor(Math.random() * baseEnemies.length)];
+    enemyTypes = [b1, b2, b3];
+  }
+  return enemyTypes;
+}
 function isEntityBlocking(map, tx, ty) {
   if (map.npcs.some(n => n.alive && n.x === tx && n.y === ty)) return true;
   if (map.boss && !map.boss.defeated && map.boss.x === tx && map.boss.y === ty) return true;
@@ -103,7 +128,7 @@ function updateMap(dt) {
             f.walkanim = p.walkanim;
           }
         });
-        if (canTriggerEncounter(map, nx, ny) && Math.random() < map.encounterRate) { startBattle(map.enemies); return; }
+        if (canTriggerEncounter(map, nx, ny) && Math.random() < map.encounterRate) { startBattle(getRandomEnemyEncounter(map.enemies)); return; }
         const tile = getTile(map, nx, ny);
         if (tile === 'exit' && map.nextMap) {
           const nm = map.nextMap;
@@ -121,7 +146,13 @@ function updateMap(dt) {
     const npc = map.npcs.find(n=>n.alive && n.x===facingX && n.y===facingY);
     if (npc) {
       startDialogue(npc.dialogue,npc,()=>{
-        if (npc.isRescue && !gs.rescuedChars.includes(npc.rescueChar)) { rescueCharacter(npc.rescueChar); npc.isRescue=false; }
+        if (npc.isRescue) {
+          const canRescue = !npc.requiresBossDefeated || (map.boss && map.boss.defeated);
+          if (canRescue && !gs.rescuedChars.includes(npc.rescueChar)) { 
+            rescueCharacter(npc.rescueChar); 
+            npc.isRescue=false; 
+          }
+        }
         if (npc.isInn) {
           if (gs.gold>=10) { gs.gold-=10; gs.party.forEach(m=>{ m.hp=m.maxHp; m.mp=m.maxMp; }); startDialogue(['ぐっすり眠れた！','HP・MPが全回復した！'],null,null); }
           else { startDialogue(['お金が足りないよ！','10Gひつようだよ。'],null,null); }
@@ -176,7 +207,7 @@ function updateDialogue(dt) {
 function startBattle(enemyTypes,isBoss=false,onVictory=null) {
   const enemies = enemyTypes.map(type => { const def=ENEMY_STATS[type]||ENEMY_STATS.ghost; return { ...def, type, hp:def.hp, maxHp:def.hp, isStunned:false, isBlind:false, analyzed:false }; });
   GameState.scene='battle';
-  GameState.battleData={ enemies, isBoss, onVictory, turn:'player', phase:'select', selectedCmd:0, selectedMember:0, selectedSkill:0, targetMode:false, log:['戦闘開始！'], logTimer:0, pendingActions:[], animations:[], shakeTimer:0, flashColor:null, victoryDelay:0, skillMode:false };
+  GameState.battleData={ enemies, isBoss, onVictory, turn:'player', phase:'select', selectedCmd:0, selectedMember:0, selectedSkill:0, selectedEnemyIdx:0, targetMode:false, log:['戦闘開始！'], logTimer:0, pendingActions:[], animations:[], shakeTimer:0, flashColor:null, victoryDelay:0, skillMode:false, damageFloating:[] };
 }
 
 function updateBattle(dt) {
@@ -204,6 +235,7 @@ function updateBattle(dt) {
 function handleBattleInput() {
   const bd = GameState.battleData;
   const member = GameState.party[bd.selectedMember];
+  const aliveEnemies = bd.enemies.filter(e=>e.hp>0);
   if (!bd.targetMode && !bd.skillMode) {
     if (Input.wasPressed('ArrowLeft')) bd.selectedCmd = Math.max(0, bd.selectedCmd-1);
     if (Input.wasPressed('ArrowRight')) bd.selectedCmd = Math.min(3, bd.selectedCmd+1);
@@ -211,7 +243,7 @@ function handleBattleInput() {
     if (Input.wasPressed('ArrowDown')) bd.selectedCmd = Math.min(3, bd.selectedCmd+2);
     if (isConfirm()) {
       const cmd = COMMANDS[bd.selectedCmd];
-      if (cmd==='たたかう') { bd.pendingActions.push({type:'attack', member, target:'enemy', targetIdx:0}); nextMemberOrExecute(); }
+      if (cmd==='たたかう') { bd.targetMode=true; bd.selectedEnemyIdx=0; }
       else if (cmd==='スキル') { bd.skillMode=true; bd.selectedSkill=0; }
       else if (cmd==='ぼうぎょ') { bd.pendingActions.push({type:'guard', member}); nextMemberOrExecute(); }
       else if (cmd==='にげる') {
@@ -219,13 +251,20 @@ function handleBattleInput() {
         else { addLog('逃げられなかった！'); bd.logTimer=800; nextMemberOrExecute(); }
       }
     }
+  } else if (bd.targetMode) {
+    if (Input.wasPressed('ArrowLeft')) bd.selectedEnemyIdx = Math.max(0, bd.selectedEnemyIdx-1);
+    if (Input.wasPressed('ArrowRight')) bd.selectedEnemyIdx = Math.min(aliveEnemies.length-1, bd.selectedEnemyIdx+1);
+    if (isConfirm()) {
+      bd.pendingActions.push({type:'attack', member, targetIdx:bd.selectedEnemyIdx}); bd.targetMode=false; nextMemberOrExecute();
+    }
+    if (isCancel()) bd.targetMode=false;
   } else if (bd.skillMode) {
     const skills = member.skills || [];
     if (Input.wasPressed('ArrowUp')) bd.selectedSkill = Math.max(0, bd.selectedSkill-1);
     if (Input.wasPressed('ArrowDown')) bd.selectedSkill = Math.min(skills.length-1, bd.selectedSkill+1);
     if (isConfirm() && skills[bd.selectedSkill]) {
       const skill = skills[bd.selectedSkill];
-      if (member.mp >= skill.mpCost) { bd.pendingActions.push({ type:'skill', member, skill, targetIdx:0 }); bd.skillMode=false; nextMemberOrExecute(); }
+      if (member.mp >= skill.mpCost) { bd.pendingActions.push({ type:'skill', member, skill, targetIdx:bd.selectedEnemyIdx }); bd.skillMode=false; bd.targetMode=false; nextMemberOrExecute(); }
       else addLog('MPが足りない！');
     }
     if (isCancel()) bd.skillMode=false;
@@ -253,6 +292,7 @@ function executeBattleAction(action) {
     if (m.isBlind) dmg = Math.random() < 0.5 ? Math.floor(dmg*0.5) : 0;
     target.hp = Math.max(0, target.hp - dmg);
     addLog(`${m.name}の攻撃！ ${target.name}に${dmg}のダメージ！`);
+    bd.damageFloating.push({damage:dmg, targetIdx:bd.enemies.indexOf(target), timer:1000});
     bd.shakeTimer=300;
     if (target.hp<=0) addLog(`${target.name}をたおした！`);
     bd.logTimer=900; checkBattleEnd(); return;
@@ -266,9 +306,9 @@ function executeBattleAction(action) {
       case 'buffDef': { m.buffDef=(m.buffDef||0)+2; addLog(`${m.name}の防御力が大幅にアップ！`); break; }
       case 'stun': if (target && Math.random() < 0.7) { target.isStunned=true; addLog(`${target.name}は1ターン行動できない！`); } else addLog(`しかし、うまく決まらなかった...`); break;
       case 'blind': enemies.forEach(e=>{ e.isBlind=true; }); addLog(`敵全体が暗闇になった！`); break;
-      case 'attack': if (target) { let dmg=Math.max(1, Math.floor(m.atk * (skill.power||1.8) - target.def*0.3)); target.hp=Math.max(0,target.hp-dmg); addLog(`${target.name}に${dmg}のダメージ！`); bd.shakeTimer=400; if (target.hp<=0) addLog(`${target.name}をたおした！`); checkBattleEnd(); } break;
+      case 'attack': if (target) { let dmg=Math.max(1, Math.floor(m.atk * (skill.power||1.8) - target.def*0.3)); target.hp=Math.max(0,target.hp-dmg); addLog(`${target.name}に${dmg}のダメージ！`); bd.damageFloating.push({damage:dmg, targetIdx:bd.enemies.indexOf(target), timer:1000}); bd.shakeTimer=400; if (target.hp<=0) addLog(`${target.name}をたおした！`); checkBattleEnd(); } break;
       case 'analyze': if (target) { target.analyzed=true; addLog(`${target.name}の弱点は「${target.weakTo||'???'}」！`); } break;
-      case 'randomAll': { let dmgTotal=0; enemies.forEach(e=>{ const d=Math.max(1, Math.floor(m.atk*(0.8+Math.random()*1.4)-e.def*0.3)); e.hp=Math.max(0,e.hp-d); dmgTotal += d; if (e.hp<=0) addLog(`${e.name}をたおした！`); }); addLog(`敵全体に合計${dmgTotal}のダメージ！`); bd.shakeTimer=600; checkBattleEnd(); break; }
+      case 'randomAll': { let dmgTotal=0; enemies.forEach((e,ei)=>{ const d=Math.max(1, Math.floor(m.atk*(0.8+Math.random()*1.4)-e.def*0.3)); e.hp=Math.max(0,e.hp-d); dmgTotal += d; bd.damageFloating.push({damage:d, targetIdx:bd.enemies.indexOf(e), timer:1000}); if (e.hp<=0) addLog(`${e.name}をたおした！`); }); addLog(`敵全体に合計${dmgTotal}のダメージ！`); bd.shakeTimer=600; checkBattleEnd(); break; }
       case 'protect': addLog(`${m.name}は仲間をかばう体勢をとった！`); m.isProtecting = true; break;
     }
     bd.logTimer = 1000; return;
@@ -293,6 +333,8 @@ function executeEnemyAction(action) {
     if (e.isBlind) dmg = Math.random() < 0.5 ? Math.floor(dmg*0.5) : 0;
     target.hp = Math.max(0, target.hp - dmg);
     addLog(`${e.name}の攻撃！ ${target.name}に${dmg}のダメージ！`);
+    const memberIdx = GameState.party.indexOf(target);
+    if (memberIdx >= 0) bd.damageFloating.push({damage:dmg, targetIdx:10+memberIdx, isPlayer:true, timer:1000});
     bd.logTimer=900;
     if (target.hp<=0) addLog(`${target.name}はたおれた...`);
     if (GameState.party.every(m=>m.hp<=0)) { bd.phase='defeat'; addLog('全滅してしまった...'); }

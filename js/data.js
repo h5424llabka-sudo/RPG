@@ -1,8 +1,8 @@
 // ゲームデータとマップ定義
 const ASSET_CONFIG = {
   characters: {
-    kanato: { src: 'pipo-charachip001.png', frameW: 32, frameH: 32, cols: 3,
-      dirRows: { down:0, left:1, right:2, up:2 }, sheetOffsetX: 0, sheetOffsetY: 0,
+    kanato: { src: 'assets/pipo-charachip001a.png', frameW: 32, frameH: 32, cols: 3,
+      dirRows: { down:0, left:1, right:2, up:3 }, sheetOffsetX: 0, sheetOffsetY: 0,
       fallbackColor: '#5588ff', name: 'かなと' },
     dog: { src: null, frameW: 32, frameH: 32, cols: 3,
       dirRows: { down:0, left:1, right:2, up:2 }, sheetOffsetX: 0, sheetOffsetY: 0,
@@ -52,7 +52,7 @@ const NPC_DEFS = {
   ],
   forest: [
     { id:'fairy', x:14, y:2, dir:'down', color:'#ffaaee', name:'もりの妖精', dialogue:['ようこそ、そよ風の森へ。','この森のボスを倒せば','迷子のいぬを助けられるよ。','がんばって！'] },
-    { id:'dog', x:22, y:10, dir:'down', color:'#cc8833', name:'いぬ', dialogue:['ワン！ ワン！','（いぬが嬉しそうに飛びついた！）','いぬが仲間になった！'], isRescue: true, rescueChar: 'dog' },
+    { id:'dog', x:22, y:10, dir:'down', color:'#cc8833', name:'いぬ', dialogue:['ワン！ ワン！','（いぬが嬉しそうに飛びついた！）','いぬが仲間になった！'], isRescue: true, rescueChar: 'dog', requiresBossDefeated: true },
   ],
   lake: [
     { id:'fisherman', x:5, y:8, dir:'right', color:'#5577aa', name:'釣り人', dialogue:['湖の真ん中に何かあるらしい。','でも水の上は歩けないからねえ...','かめに乗れたらなあ。'] },
@@ -68,7 +68,7 @@ const NPC_DEFS = {
   ],
 };
 const MAP_DATA = {
-  village: { name:'はじまりの村', w:25, h:18, bgm:'village', enemies:[], nextMap:{x:12,y:0,map:'forest',toX:12,toY:16}, tiles:[
+  village: { name:'はじまりの村', w:25, h:18, bgm:'village', enemies:[], nextMap:{x:12,y:0,map:'forest',toX:12,toY:0}, tiles:[
       'LLLLLLLLLLLLLLLLLLLLLLLLL',
       'LGGGGGGGGGGGGGGGGGGGGGGGL',
       'LHHHHGGGGGGGGGGGGGGGGGGGL',
@@ -88,7 +88,7 @@ const MAP_DATA = {
       'LGGGGGGGGGGGGGGGGGGGGGGGL',
       'LLLLLLLLLLLLELLLLLLLLLLLL',
     ].reverse(), startX:12, startY:1, encounter:false },
-  forest: { name:'そよ風の森', w:25, h:18, bgm:'forest', enemies:['ghost','slime','wolf'], encounterRate:0.04, encounterTiles:['grass'], nextMap:{x:12,y:17,map:'village',toX:12,toY:1}, tiles:[
+  forest: { name:'そよ風の森', w:25, h:18, bgm:'forest', enemies:['ghost','slime','wolf'], encounterRate:0.04, encounterTiles:['grass'], nextMap:{x:12,y:17,map:'village',toX:12,toY:0}, tiles:[
       'LLLLLLLLLLLLELLLLLLLLLLLL',
       'LTTTTTTTTTTGGGTTTTTTTTTTL',
       'LTTTTTTTTTTGGGTTTTTTTTTTL',
@@ -153,11 +153,19 @@ const CHARACTER_STATS = {
     ] },
 };
 const ENEMY_STATS = {
-  ghost: { name:'イタズラおばけ', hp:35, atk:8, def:4, spd:10, exp:15, gold:8, skills:['おどかす'], color:'#ccaaff', weakTo:'light' },
-  slime: { name:'迷子スライム', hp:25, atk:5, def:3, spd:8, exp:10, gold:5, skills:['たいあたり'], color:'#88ffcc', weakTo:'fire' },
-  wolf: { name:'もりのオオカミ', hp:55, atk:14, def:8, spd:15, exp:25, gold:15, skills:['かみつく','おたけび'], color:'#886644', weakTo:'thunder' },
-  fairy: { name:'イタズラ妖精', hp:40, atk:10, def:6, spd:18, exp:20, gold:12, skills:['まどわせ'], color:'#ffaaee', weakTo:'dark' },
-  boss: { name:'もりのぬし', hp:180, atk:22, def:15, spd:12, exp:80, gold:50, skills:['つよいひっかき','もりのおたけび'], color:'#dd3333', weakTo:'light', isBoss:true },
+  ghost: { name:'イタズラおばけ', hp:35, atk:8, def:4, spd:10, exp:15, gold:8, skills:['おどかす'], color:'#ccaaff', weakTo:'light', level:1 },
+  ghost_lv2: { name:'イタズラおばけ(Lv2)', hp:50, atk:12, def:6, spd:12, exp:25, gold:12, skills:['おどかす'], color:'#dd99ff', weakTo:'light', level:2 },
+  ghost_lv3: { name:'シャドウおばけ', hp:70, atk:16, def:8, spd:14, exp:40, gold:18, skills:['おどかす','つきまとう'], color:'#8844cc', weakTo:'light', level:3 },
+  slime: { name:'迷子スライム', hp:25, atk:5, def:3, spd:8, exp:10, gold:5, skills:['たいあたり'], color:'#88ffcc', weakTo:'fire', level:1 },
+  slime_lv2: { name:'まるいスライム', hp:40, atk:8, def:5, spd:10, exp:18, gold:10, skills:['たいあたり','スライム液'], color:'#44ffee', weakTo:'fire', level:2 },
+  slime_lv3: { name:'キングスライム', hp:65, atk:14, def:8, spd:12, exp:35, gold:20, skills:['たいあたり','スライム液','分裂'], color:'#00ffff', weakTo:'fire', level:3 },
+  wolf: { name:'もりのオオカミ', hp:55, atk:14, def:8, spd:15, exp:25, gold:15, skills:['かみつく','おたけび'], color:'#886644', weakTo:'thunder', level:1 },
+  wolf_lv2: { name:'ダークウルフ', hp:75, atk:18, def:10, spd:17, exp:35, gold:22, skills:['かみつく','おたけび','ブレスアタック'], color:'#553322', weakTo:'thunder', level:2 },
+  wolf_lv3: { name:'スカイウルフ', hp:95, atk:22, def:12, spd:20, exp:50, gold:30, skills:['かみつく','おたけび','ブレスアタック'], color:'#334411', weakTo:'thunder', level:3 },
+  fairy: { name:'イタズラ妖精', hp:40, atk:10, def:6, spd:18, exp:20, gold:12, skills:['まどわせ'], color:'#ffaaee', weakTo:'dark', level:1 },
+  fairy_lv2: { name:'トリックフェアリー', hp:55, atk:13, def:8, spd:20, exp:30, gold:18, skills:['まどわせ','ぶぶん'], color:'#ff88dd', weakTo:'dark', level:2 },
+  fairy_lv3: { name:'クイーンフェアリー', hp:75, atk:17, def:10, spd:23, exp:45, gold:28, skills:['まどわせ','ぶぶん','魔法の光'], color:'#ffccff', weakTo:'dark', level:3 },
+  boss: { name:'もりのぬし', hp:180, atk:22, def:15, spd:12, exp:80, gold:50, skills:['つよいひっかき','もりのおたけび'], color:'#dd3333', weakTo:'light', isBoss:true, level:1 },
 };
 const COMMANDS = ['たたかう', 'スキル', 'ぼうぎょ', 'にげる'];
 
